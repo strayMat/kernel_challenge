@@ -351,11 +351,11 @@ def preprocessing(X, Y, percent=0.8):
     # X = X-np.mean(X, axis=0)
 
     # Scaling data
-    X = scale( X, axis=0, with_mean=True, with_std=True, copy=True )
+    # X = scale( X, axis=0, with_mean=True, with_std=True, copy=True )
 
     # Add one dimension to your data points in order to account for
     # the offset if your data is not centered.
-    X = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
+    # X = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
 
     # Compute the training and the test set
     n_training = int(percent  * Y.size)
