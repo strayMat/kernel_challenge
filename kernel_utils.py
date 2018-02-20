@@ -1,5 +1,5 @@
 ###############################################
-# Gradient Descent Methods And SVM optimization
+# Kernel SVM optimization
 # Erwan Bourceret
 ###############################################
 
@@ -98,6 +98,7 @@ def dampedNewtonStep(x,f,g,h):
     hesst_inv = np.linalg.inv(hesst)
 
     lambdat2 = np.array(gradt.dot(hesst_inv).dot(gradt))[0][0]
+    print(lambdat2)
     coef = (1.+np.sqrt(lambdat2))
     coef = 1./coef
     x_new = np.array(x - coef * hesst_inv.dot(gradt))[0]
@@ -202,21 +203,31 @@ def newtonLS(x0,f,g,h,tol, alpha=0.2, beta=0.9, Tmax = 5):
 ###### 3. Support Vector Machine Problem ######
 ###############################################
 
-def transform_svm_primal(tau,X,y):
+def transform_svm_primal(K,y,lamb):
     """
     Transform the primal Support Vector Machine (SVM)
     problem into a quadratic problem
     Args:
-        - tau : regularization parameter
-        - X : data set
+        - K : Kernel of x
         - Y : Target labels
+        - lamb : regularization parameter
     Ouput:
         - Q : semi-definite matrix (quadratic parameter)
+        |K   0 |
+        |0     0 |
+
         - P : vector parameter in the minimization part
+        |0,...,0 , 1, ..., 1|^t / lamb
+
         - A : matrix constraint
+        |-yK   -I |
+        |0     -I |
+
         - b : vector constraint
+        |-1,...,-1 , 0, ..., 0|^t
+
     """
-    X = np.matrix(X, dtype=np.float)
+    K = np.matrix(K, dtype=np.float)
     y = np.array(y, dtype=np.float)
 
     # number of data
@@ -224,30 +235,25 @@ def transform_svm_primal(tau,X,y):
 
     # Verify the shape of the data
     try:
-        assert X.shape[0] == n
+        assert K.shape[0] == n
     except AssertionError:
-        try:
-            assert X.shape[1] == n
-            X = np.transpose(X)
-        except AssertionError:
-            print("X and Y must have the same length")
-            exit(1)
-    d = X.shape[1]
+        print("K and Y must have the same length")
+        exit(1)
 
-    Q = np.append(np.repeat(1.,d), np.repeat(0.,n))
-    P = (1. - Q)/tau/n
-    Q = np.diag(Q)
+    A1 = np.concatenate((-np.transpose(np.multiply(K, y)), -np.eye(n)), axis=1)
+    A2 = np.concatenate((np.zeros((n,n)), -np.eye(n)), axis=1)
+    A = np.concatenate((A1, A2), axis=0)
 
-    # condition : yx.w + z > 1
-    A = np.concatenate((-np.transpose(np.multiply(np.transpose(X), y)), -np.eye(n)), axis=1)
+    Q1 = np.concatenate((K, np.zeros((n,n))), axis=1)
+    Q2 = np.zeros((n, 2*n))
+    Q = lamb * np.concatenate((Q1, Q2), axis=0)
 
-    # condition : z>0 condition
-    A_tmp = np.concatenate((np.zeros((n,d)), -np.eye(n)), axis=1)
+    p = np.concatenate((np.zeros(n), np.ones(n)), axis=0) / n
 
-    A = np.concatenate((A,A_tmp), axis=0)
-    b = np.append(np.repeat(-1., n), np.repeat(0., n))
+    b = np.concatenate((-np.ones(n), np.zeros(n)), axis=0)
 
-    return Q, P, A, b
+
+    return Q, p, A, b
 
 
 def transform_svm_dual(tau,X,y):
@@ -280,6 +286,7 @@ def transform_svm_dual(tau,X,y):
         except AssertionError:
             print("X and Y must have the same length")
             exit(1)
+
 
     # Compute the Kernel Matrix with labels ponderation
     Q = np.diag(y).dot(X).dot(np.transpose(X)).dot(np.diag(y))
@@ -345,7 +352,10 @@ def preprocessing(X, Y, percent=0.8):
     np.random.RandomState(1)
     tmp = np.concatenate((X, np.matrix(Y)), axis=1)
     np.random.shuffle(tmp)
-    X = tmp[:, :X.shape[1]]
+    X_tmp = tmp[:, :X.shape[1]]
+
+    # changing the value to {-1,1}
+    Y_tmp = (Y - 0.5) * 2
 
     # centering data
     # X = X-np.mean(X, axis=0)
@@ -355,14 +365,14 @@ def preprocessing(X, Y, percent=0.8):
 
     # Add one dimension to your data points in order to account for
     # the offset if your data is not centered.
-    X = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
+    X_tmp = np.concatenate((X_tmp, np.ones((X_tmp.shape[0], 1))), axis=1)
 
     # Compute the training and the test set
     n_training = int(percent  * Y.size)
-    X_train = X[:n_training]
-    Y_train = Y[:n_training]
-    X_test = X[n_training:]
-    Y_test = Y[n_training:]
+    X_train = X_tmp[:n_training]
+    Y_train = Y_tmp[:n_training]
+    X_test = X_tmp[n_training:]
+    Y_test = Y_tmp[n_training:]
 
     return X_train, Y_train, X_test, Y_test
 
@@ -385,7 +395,7 @@ def SVM_vector(X_train, Y_train, tau, mu, dual=False, tol=0.01):
 
     w, w_hist, phi_w_hist = barr_method(Q,P,A,b,w_0,mu,tol)
 
-    w = w[:X_train.shape[1]]
+    # w = w[:X_train.shape[1]]
 
     return w, w_hist, phi_w_hist
 
