@@ -17,6 +17,7 @@ def preprocessing(X, Y, percent=0.8):
     n_training = int(percent  * Y.shape[0])
     train_ix = rand_ix[:n_training]
     test_ix = rand_ix[n_training:]
+
     ## only for numerical data (does not work with sequences)
     # centering data
     # X = X-np.mean(X, axis=0)
@@ -30,8 +31,8 @@ def preprocessing(X, Y, percent=0.8):
 
     # Compute the training and the test set
     X_train = X[train_ix]
-    Y_train = Y[train_ix]
+    Y_train = (Y[train_ix] - 0.5) * 2
     X_test = X[test_ix]
-    Y_test = Y[test_ix]
+    Y_test = (Y[test_ix] - 0.5) * 2
 
     return X_train, Y_train, X_test, Y_test

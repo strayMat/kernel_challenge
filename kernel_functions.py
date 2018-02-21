@@ -34,21 +34,25 @@ def gram_phi(X, phi):
 	K = X_feat.dot(X_feat.T)
 	return K
 
-# k_spectrum kernel
-## Creation of all possible combinations
-base_azote = ['A', 'C', 'T', 'G']
-dic_prot = [''.join(i) for i in product(base_azote, repeat = 3)]
-nb_feat = len(dic_prot)
-
 # k_spectrum kernel with k = 3
 ## Creation of all possible combinations
 base_azote = ['A', 'C', 'T', 'G']
 dic_aa = [''.join(i) for i in product(base_azote, repeat = 3)]
 nb_feat = len(dic_aa)
 
-def count_kuplet(seq):
+def count_kuplet_3(seq):
     k_grams_count = np.zeros(nb_feat)
     for i,e in enumerate(dic_aa):
+        k_grams_count[i] = seq.count(e)
+    return k_grams_count
+
+def count_kuplet_k(seq, k=3):
+    base_azote = ['A', 'C', 'T', 'G']
+    dic_k = [''.join(i) for i in product(base_azote, repeat = k)]
+    nb_feat = len(dic_k)
+
+    k_grams_count = np.zeros(nb_feat)
+    for i,e in enumerate(dic_k):
         k_grams_count[i] = seq.count(e)
     return k_grams_count
 
