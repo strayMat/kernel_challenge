@@ -1,5 +1,3 @@
-# Kernel functions
-
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -55,4 +53,67 @@ def count_kuplet_k(seq, k=3):
     for i,e in enumerate(dic_k):
         k_grams_count[i] = seq.count(e)
     return k_grams_count
+
+def compute_gap_kernel(X1, X2, k, lamb=0.5):
+    """
+    Compute the 'sub string kernel'
+    complexity in O(k*X1*X2)
+    """
+    N_X1 = len(X1)
+    N_X2 = len(X2)
+    B = np.zeros((k+1, N_X1+1, N_X2+1))
+    K = np.zeros((N_X1+1, N_X2+1))
+    ker = np.zeros(k+1)
+    for i in range(1, N_X1+1):
+        for j in range(1, N_X2+1):
+            if(X1[i-1] == X2[j-1]):
+                B[1, i, j] = lamb**2
+                ker[1] += lamb**2
+    # ker = ker/(lamb**2) # renormalize
+    for l in range(2, k+1):
+        for i in range(1, N_X1+1):
+            for j in range(1, N_X2+1):
+                K[i, j] = B[l-1, i, j] + lamb*K[i-1, j] + lamb*K[i, j-1] - (lamb**2)*K[i-1, j-1]
+                if X1[i-1]==X2[j-1]:
+                    B[l, i, j] = lamb**2 * K[i-1, j-1]
+                    ker[l] = ker[l] + B[l, i, j]
+    return ker[k]
+
+def compute_gap_kernel_param(param):
+    return compute_gap_kernel(param[0], param[1], param[2])
+
+
+def S(a, b):
+    if a!=b:
+        return 0.
+    else:
+        return 1.
+
+def g(n, d=1, e=1):
+    if n >0:
+        return d + e*(n-1)
+    elif n==0:
+        return 0.
+    else:
+        print("Negative Gap")
+
+def LA_kernel(u, v, d=1., e=1., beta = 0.00001):
+
+    N_u = len(u)
+    N_v = len(v)
+
+    M = np.zeros((N_u+1, N_v+1))
+    X = np.zeros((N_u+1, N_v+1))
+    Y = np.zeros((N_u+1, N_v+1))
+    X2 = np.zeros((N_u+1, N_v+1))
+    Y2 = np.zeros((N_u+1, N_v+1))
+    for i in range(1, N_u+1):
+        for j in range(1, N_v+1):
+            M[i, j] = np.exp(beta * S(u[i-1],v[j-1]))*(1.+X[i-1,j-1]+Y[i-1,j-1]+M[i-1,j-1])
+            X[i, j] = np.exp(-beta*d) * M[i-1, j] + np.exp(-beta*e)*X[i-1, j]
+            Y[i, j] = np.exp(-beta*d) *(M[i, j-1]+X[i, j-1]) + np.exp(-beta*e)*Y[i, j-1]
+            X2[i, j] = M[i-1, j] + X2[i-1, j]
+            Y2[i, j] = M[i, j-1] + X2[i, j-1] + Y2[i, j-1]
+    return np.log(1. + X2[N_u, N_v] + Y2[N_u, N_v] + M[N_u, N_v])
+
 
