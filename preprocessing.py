@@ -28,10 +28,6 @@ def preprocessing(X, Y, percent=0.8):
     # Scaling data
     # X = scale( X, axis=0, with_mean=True, with_std=True, copy=True )
 
-    # Add one dimension to your data points in order to account for
-    # the offset if your data is not centered.
-    # X = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
-
     # Compute the training and the test set
     X_train = X[train_ix]
     Y_train = (Y[train_ix] - 0.5) * 2
@@ -45,16 +41,16 @@ def preprocessing(X, Y, percent=0.8):
 def grid_search(X, Y, grid, kernel = 'k_gram'):
     X_train, Y_train, X_test, Y_test = preprocessing(X, Y)
     # baseline parameters
-    keys, values = zip(*grid.items()) 
+    keys, values = zip(*grid.items())
     experiments = [dict(zip(keys, v)) for v in itertools.product(*values)]
-    
+
     best_param = dict(zip(grid.keys(), [None]*len(grid.keys())))
     best_acc_test = 0
     best_acc_train = 0
     param = {'X_train':X_train, 'X_test':X_test, 'Y_train':Y_train, 'Y_test':Y_test, 'kernel':kernel}
-    
+
     for e in experiments:
-        for p in e.keys():    
+        for p in e.keys():
             param[p] = e[p]
         print(e)
         acc_test, acc_train = solve_svm_kernel(**param)
