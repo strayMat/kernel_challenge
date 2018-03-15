@@ -347,7 +347,7 @@ def diMismatchFeatures(X_train, k, m, alphabet='ATGC',
             subSeq = X_train[s_ix][subStart:(subStart + k)]
             if subSeq not in gramList:
                 sys.stderr.write('Error, {} is not a valid {}-gram for the alphabet {}'.format(subSeq, k, alphabet))
-            sys.exit(1)
+                sys.exit(1)
             subSeq_ix = gramDict[subSeq]
             Phi[s_ix, :] += diMismatchTable[subSeq_ix, :]
     return Phi
