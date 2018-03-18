@@ -2,6 +2,8 @@ import numpy as np
 from tqdm import tqdm
 from itertools import product
 import sys
+from collections import defaultdict
+
 
 '''
 Compute the gram matrix of a reproducing kernel K(x, y) and data X even if the embedding phi is unknown
@@ -301,7 +303,7 @@ def buildMismatchTable(k, m, alphabet='ATGC',
 
 # compute the mismatch features PHI for a training sequence
 # (kernel is then obtained computing K = PHI.dot(PHI.T))
-# complexity : O(NL) where N the number of sequences and L the length of the sequences  
+# complexity : O(NL) where N the number of sequences and L the length of the sequences
 def mismatchFeatures(X_train, k, m, alphabet='ATGC',
                      gramList=None, gramDict=None,
                      mismatchDist=None, mismatchTable=None):
@@ -351,3 +353,55 @@ def diMismatchFeatures(X_train, k, m, alphabet='ATGC',
             subSeq_ix = gramDict[subSeq]
             Phi[s_ix, :] += diMismatchTable[subSeq_ix, :]
     return Phi
+
+
+def count_kuplet_gap(seq, k_tmp, k=3, fold=5, k_grams_count=None):
+    assert fold%2 == 1 or fold ==2, "fold must be odd"
+    fold_size = len(bin(fold)[2:])
+    fold = bin(fold)[2:]
+    base_azote = ['A', 'C', 'T', 'G']
+
+    if k_grams_count is None:
+        k_grams_count = dict()
+
+    tab = [''.join(i) for i in product(base_azote, repeat=np.sum([int(i) for i in fold]))]
+    for code in tab:
+        # print(''.join([code, '_', fold]))
+        k_grams_count[''.join([code, '_', fold])] = 0.
+        k_tmp[''.join([code, '_', fold])] = 0.
+
+    for i in range(len(seq) - fold_size+1):
+        l = seq[i:(i+fold_size)]
+        # print(l)
+        l = ''.join(l[i]*int(fold[i]) for i in range(len(fold)))
+        k_grams_count[''.join([l, '_', fold])] += 1./(len(seq) - fold_size+1)
+        k_tmp[''.join([l, '_', fold])] += 1.
+    return k_grams_count, k_tmp
+
+def count_k_fold(sent, k_tmp, fold = 16):
+    k_grams_count = dict()
+    k_tmp = dict()
+    for fold in np.arange(3, fold, 2):
+        k_grams_count, k_tmp = count_kuplet_gap(sent, k_tmp, k = 3, fold = fold, k_grams_count=k_grams_count)
+    return np.array([k_grams_count[key] for key in sorted(k_grams_count)]), np.array([k_tmp[key] for key in sorted(k_tmp)])
+
+
+def to_k_fold(X, fold=64):
+    '''
+    From X (X_raw) compute a sequence X_process using count_k_fold
+    '''
+
+    X_process = []
+    X_count = []
+    k_tmp = defaultdict(int)
+    for sent in tqdm(X):
+        sent_process, k_tmp = count_k_fold(sent, k_tmp, fold = fold)
+        X_process.append(sent_process)
+        X_count.append(k_tmp)
+
+    X_process = np.array(X_process) * len(X) * len(X[0])
+    sum_tmp = np.sum(np.array(X_count), axis=0)
+
+    X_process = np.divide(X_process, sum_tmp, out=np.zeros_like(X_process), where=sum_tmp!=0)
+
+    return X_process
