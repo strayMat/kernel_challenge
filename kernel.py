@@ -63,7 +63,7 @@ def solve_svm(K, Y_train, lamb=0.1, kktreg=1e-9):
     p = matrix(p)
     G = matrix(A)
     h = matrix(b)
-    sol=solvers.qp(Q, p, G, h, kktsolver='ldl', options={'kktreg':1e-9}) # A, b)
+    sol=solvers.qp(Q, p, G, h, kktsolver='ldl', options={'kktreg':kktreg}) # A, b)
     return sol['x']
 
 def l2distance(X,Z=None):
