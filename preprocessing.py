@@ -3,7 +3,7 @@ import numpy as np
 import itertools
 from kernel import *
 
-def preprocessing(X, Y, percent=0.8):
+def preprocessing(X, Y, percent=0.8, seed=1):
     """
     Preprocessing the data.(expect as input numpy arrays)
         - Shuffle
@@ -14,7 +14,7 @@ def preprocessing(X, Y, percent=0.8):
     """
 
     # Shuffle phase
-    np.random.RandomState(1)
+    np.random.seed(seed)
     rand_ix = np.arange(X.shape[0])
     np.random.shuffle(rand_ix)
     n_training = int(percent  * Y.shape[0])

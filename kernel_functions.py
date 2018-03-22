@@ -355,7 +355,7 @@ def diMismatchFeatures(X_train, k, m, alphabet='ATGC',
     return Phi
 
 
-def count_kuplet_gap(seq, k_tmp, k=3, fold=5, k_grams_count=None):
+def count_kuplet_gap(seq, k_tmp, fold=5, k_grams_count=None):
     assert fold%2 == 1 or fold ==2, "fold must be odd"
     fold_size = len(bin(fold)[2:])
     fold = bin(fold)[2:]
@@ -378,15 +378,16 @@ def count_kuplet_gap(seq, k_tmp, k=3, fold=5, k_grams_count=None):
         k_tmp[''.join([l, '_', fold])] += 1.
     return k_grams_count, k_tmp
 
-def count_k_fold(sent, k_tmp, fold = 16):
+def count_k_fold(sent, k_tmp, fold1 = 9, fold2 = 64):
     k_grams_count = dict()
     k_tmp = dict()
-    for fold in np.arange(3, fold, 2):
-        k_grams_count, k_tmp = count_kuplet_gap(sent, k_tmp, k = 3, fold = fold, k_grams_count=k_grams_count)
+    for fold in np.arange(fold1, fold2, 2):
+        if(np.sum([int(i) for i in bin(fold)[2:]]) > 2):
+            k_grams_count, k_tmp = count_kuplet_gap(sent, k_tmp, fold = fold, k_grams_count=k_grams_count)
     return np.array([k_grams_count[key] for key in sorted(k_grams_count)]), np.array([k_tmp[key] for key in sorted(k_tmp)])
 
 
-def to_k_fold(X, fold=64):
+def to_k_fold(X, fold1=9, fold2=64):
     '''
     From X (X_raw) compute a sequence X_process using count_k_fold
     '''
@@ -395,7 +396,7 @@ def to_k_fold(X, fold=64):
     X_count = []
     k_tmp = defaultdict(int)
     for sent in tqdm(X):
-        sent_process, k_tmp = count_k_fold(sent, k_tmp, fold = fold)
+        sent_process, k_tmp = count_k_fold(sent, k_tmp, fold1 = fold1, fold2 = fold2)
         X_process.append(sent_process)
         X_count.append(k_tmp)
 
