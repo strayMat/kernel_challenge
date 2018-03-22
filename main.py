@@ -36,21 +36,24 @@ X_2 = diMismatchFeatures(X_raw2, k=6, m=3, diMismatchDist=diDist)
 X_test2 = diMismatchFeatures(X_test2, k=6, m=3, diMismatchDist=diDist)
 
 # Train and predict for the three TFs
+print('fitting TF0....')
 K0, Ktest0 = kernelize(X_0, X_test0)
 w0, bias0 = fit(K0, Y0, lamb=1.2e-4, verbose=False)
 Y_pred0 = predict(w0, bias0, Ktest0)
 
+print('fitting TF1....')
 K1, Ktest1 = kernelize(X_1, X_test1)
 w1, bias1 = fit(K1, Y1, lamb=3e-5, verbose=False)
 Y_pred1 = predict(w1, bias1, Ktest1)
 
+print('fitting TF2....')
 K2, Ktest2 = kernelize(X_2, X_test2)
 w2, bias2 = fit(K2, Y2, lamb=7e-4, verbose=False)
 Y_pred2 = predict(w2, bias2, Ktest2)
 
-test0 = np.transpose(Y_pred0)[:][0]
-test1 = np.transpose(Y_pred1)[:][0]
-test2 = np.transpose(Y_pred2)[:][0]
+test0 = np.transpose(Y_pred0)
+test1 = np.transpose(Y_pred1)
+test2 = np.transpose(Y_pred2)
 
 bound = np.concatenate((test0, test1, test2), axis=0).reshape((-1)).astype(int)
 final = pd.DataFrame(np.arange(3000), columns=['Id'])
