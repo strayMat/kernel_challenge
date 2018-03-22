@@ -1,410 +1,169 @@
-###############################################
-# Gradient Descent Methods And SVM optimization
-# Erwan Bourceret
-###############################################
-
 import numpy as np
-from sklearn import datasets
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
-from matplotlib import cm
-from numpy import linalg as LA
-from matplotlib import rc
-from sklearn.preprocessing import scale
-rc('font',**{'family':'sans-serif','sans-serif':['Helvetica']})
-rc('text', usetex=True)
+from cvxopt import matrix, solvers
+from kernel_functions import *
+import itertools
 
 
-# Interior Points Method
-# phi(x,t,Q,p,A,b), grad(x,t,Q,p,A,b) and hess(x,t,Q,p,A,b)
-
-def phi(x,t,Q,p,A,b):
-    """
-    Compute the fonction value
-    """
-    x = np.array(x, dtype=np.float)
-    Q = np.matrix(Q, dtype=np.float)
-    p = np.array(p, dtype=np.float)
-    A = np.matrix(A, dtype=np.float)
-    b = np.array(b, dtype=np.float)
-
-    phit = (0.5*x.dot(Q).dot(x) + p.dot(x))
-
-    phit = t*phit
-
-    tmp = b - A.dot(x)
-    tmp = np.log(tmp)
-
-    phit = np.array(phit - np.sum(tmp))[0][0]
-    return phit
-
-def grad(x,t,Q,p,A,b):
-    """
-    Compute the gradient of phit
-    """
-    x = np.array(x, dtype=np.float)
-    Q = np.matrix(Q, dtype=np.float)
-    p = np.array(p, dtype=np.float)
-    A = np.matrix(A, dtype=np.float)
-    b = np.array(b, dtype=np.float)
-
-    gradt = Q.dot(x) + p
-    gradt = t * gradt
-
-    tmp = b - A.dot(x)
-    tmp = 1./tmp
-    gradt = np.array(gradt + tmp.dot(A))[0]
-    return gradt
-
-
-def hess(x,t,Q,p,A,b):
-    """
-    Compute the Hessian of phit
-    """
-    x = np.array(x, dtype=np.float)
-    Q = np.matrix(Q, dtype=np.float)
-    p = np.array(p, dtype=np.float)
-    A = np.matrix(A, dtype=np.float)
-    b = np.array(b, dtype=np.float)
-
-    hesst = t*Q
-    tmp = b - A.dot(x)
-    tmp = 1./np.square(tmp)
-    tmp = np.diag(np.array(tmp)[0])
-    tmp = (A.T).dot(tmp).dot(A)
-    hesst = hesst + tmp
-
-    return hesst
-
-############################
-###### 2. Newton Step ######
-############################
-
-def dampedNewtonStep(x,f,g,h):
-    """
-    Compute the damped Newton step at point x
-    Args:
-        - x : point where the Newton step will be computed
-        - f : the value function
-        - g : the gradient function
-        - h : the hessian function
-    Ouput:
-        - x_new : the damped Newton step at point x
-        - lamdat2/2 : the estimated gap before the minimum
-    """
-    phit = f(x)
-    gradt = np.array(g(x), dtype=np.float)
-    hesst = np.matrix(h(x), dtype=np.float)
-    hesst_inv = np.linalg.inv(hesst)
-
-    lambdat2 = np.array(gradt.dot(hesst_inv).dot(gradt))[0][0]
-    coef = (1.+np.sqrt(lambdat2))
-    coef = 1./coef
-    x_new = np.array(x - coef * hesst_inv.dot(gradt))[0]
-
-    return x_new, lambdat2/2
-
-
-def dampedNewton(x0,f,g,h,tol,Tmax=5):
-    """
-    Implement the damped Newton algorithm
-    Args:
-        - x0 : initial point
-        - f : the value function to minimize
-        - g : the gradient function
-        - h : the hessian function
-        - tol : the threshold (smaller than 0.3819660112501051)
-        - Tmax : maximum number of iteration
-    Ouput:
-        - xstar : the point tol-minimizing f
-        - xhist : the history of damped step
-    """
-    try:
-        assert tol < 0.3819660112501051
-    except AssertionError:
-        print("The threshold in dampedNewton must be smaller ")
-        exit(1)
-    xstar, gap = dampedNewtonStep(x0,f,g,h)
-    xhist = [x0, xstar]
-    phi_w_hist = [f(x0), f(xstar)]
-    it = 1
-    while(gap>tol and it<Tmax):
-        it +=1
-        xstar, gap = dampedNewtonStep(xstar,f,g,h)
-        phi_w_hist.append(f(xstar))
-        xhist.append(xstar)
-    xhist = np.array(xhist)
-
-    return xstar, xhist, phi_w_hist
-
-
-def newtonStep(x,f,g,h):
-    """
-    Compute the Newton step at point x
-    Args:
-        - x : point where the Newton step will be computed
-        - f : the value function
-        - g : the gradient function
-        - h : the hessian function
-    Ouput:
-        - x_new : the Newton step at point x
-        - lamdat/2 : the estimated gap before the minimum
-    """
-    phit = f(x)
-    gradt = np.array(g(x), dtype=np.float)
-    hesst = np.matrix(h(x), dtype=np.float)
-    try:
-        hesst_inv = np.linalg.inv(hesst)
-    except LinAlgError("Singular matrix"):
-        exit(1)
-
-
-    lambdat = np.array(gradt.dot(hesst).dot(gradt))[0][0]
-    x_new = np.array(x - hesst_inv.dot(gradt))[0]
-
-    return x_new, lambdat/2.
-
-
-
-def newtonLS(x0,f,g,h,tol, alpha=0.2, beta=0.9, Tmax = 5):
-    """
-    Implement the Newton algorithm with backtracking line-search
-    Args:
-        - x0 : initial point
-        - f : the value function to minimize
-        - g : the gradient function
-        - h : the hessian function
-        - tol : the threshold
-        - alpha, beta : parameter for line-search
-        - Tmax : maximum number of iteration
-    Ouput:
-        - xstar : the point tol-minimizing f
-        - xhist : the history of damped step
-    """
-    xstar, gap = newtonStep(x0,f,g,h)
-    xhist = [x0, xstar]
-    it = 0
-    while(gap>tol and it<Tmax):
-        it+=1
-        xtmp, gap = newtonStep(xstar,f,g,h)
-        deltax = xtmp - xstar
-        gradt = np.array(g(xstar), dtype=np.float)
-        t=1
-        # Backtracking line search
-        while(f(xstar + t*deltax) > f(xstar) + alpha * t * gradt.dot(deltax)):
-            t= beta*t
-        xstar = xstar + t*deltax
-        xhist.append(xstar)
-
-    return xstar, xhist
-
-###############################################
-###### 3. Support Vector Machine Problem ######
-###############################################
-
-def transform_svm_primal(tau,X,y):
-    """
-    Transform the primal Support Vector Machine (SVM)
-    problem into a quadratic problem
-    Args:
-        - tau : regularization parameter
-        - X : data set
-        - Y : Target labels
-    Ouput:
-        - Q : semi-definite matrix (quadratic parameter)
-        - P : vector parameter in the minimization part
-        - A : matrix constraint
-        - b : vector constraint
-    """
-    X = np.matrix(X, dtype=np.float)
-    y = np.array(y, dtype=np.float)
-
-    # number of data
-    n = y.size
-
-    # Verify the shape of the data
-    try:
-        assert X.shape[0] == n
-    except AssertionError:
-        try:
-            assert X.shape[1] == n
-            X = np.transpose(X)
-        except AssertionError:
-            print("X and Y must have the same length")
-            exit(1)
-    d = X.shape[1]
-
-    Q = np.append(np.repeat(1.,d), np.repeat(0.,n))
-    P = (1. - Q)/tau/n
-    Q = np.diag(Q)
-
-    # condition : yx.w + z > 1
-    A = np.concatenate((-np.transpose(np.multiply(np.transpose(X), y)), -np.eye(n)), axis=1)
-
-    # condition : z>0 condition
-    A_tmp = np.concatenate((np.zeros((n,d)), -np.eye(n)), axis=1)
-
-    A = np.concatenate((A,A_tmp), axis=0)
-    b = np.append(np.repeat(-1., n), np.repeat(0., n))
-
-    return Q, P, A, b
-
-
-def transform_svm_dual(tau,X,y):
-    """
-    Transform the dual Support Vector Machine (SVM)
-    problem into a quadratic problem
-    Args:
-        - tau : regularization parameter
-        - X : data set
-        - Y : Target labels
-    Ouput:
-        - Q : semi-definite matrix (quadratic parameter)
-        - P : vector parameter in the minimization part
-        - A : matrix constraint
-        - b : vector constraint
-    """
-    X = np.matrix(X, dtype=np.float)
-    y = np.array(y)
-
-    # Data size
-    n = y.size
-
-    # Verify the shape of the data
-    try:
-        assert X.shape[0] == n
-    except AssertionError:
-        try:
-            assert X.shape[1] == n
-            X = np.transpose(X)
-        except AssertionError:
-            print("X and Y must have the same length")
-            exit(1)
-
-    # Compute the Kernel Matrix with labels ponderation
-    Q = np.diag(y).dot(X).dot(np.transpose(X)).dot(np.diag(y))
-
-    P = -np.repeat(1.,n)
-
-    # condition 0 < lambda < 1/n/tau
-    A = np.concatenate((np.eye(n), -np.eye(n)), axis=0)
-    b = np.append(np.repeat(1., n)/tau/n, np.repeat(0, n))
-
-
-    return Q, P, A, b
-
-
-
-def barr_method(Q,p,A,b,x_0,mu,tol):
-    """
-    Solve the Quadratic problem using damped Newton method
-    Args:
-        - Q : semi-definite matrix (quadratic parameter)
-        - P : vector parameter in the minimization part
-        - A : matrix constraint
-        - b : vector constraint
-        - x_0 : inital state
-        - mu :  increment of the barrier parameter
-        - tol : the threshold
-    Ouput:
-        - x_sol : the argument minimizing the quadratic problem
-        - x_hist : the history of step
-    """
-    t = mu
-    x_sol = x_0
-    x_hist = np.matrix(x_sol)
-    phi_w_hist = []
-    it=0
-    while(mu/t > tol):
-        it+=1
-        # if(it%100 == 0):
-        print("we want {} to be less than {}".format(mu/t, tol))
-        f = lambda x: phi(x,t,Q,p,A,b) ;
-        g = lambda x: grad(x,t,Q,p,A,b) ;
-        h = lambda x: hess(x,t,Q,p,A,b) ;
-        x_sol, xhist_tmp, ph_w_tmp = dampedNewton(x_sol,f,g,h,tol)
-        x_hist = np.concatenate((x_hist, xhist_tmp), axis = 0)
-        phi_w_hist.append(ph_w_tmp)
-        t = mu*t
-
-    #phi_w_hist.append(f(x_sol))
-    return x_sol, x_hist, phi_w_hist
-
-
+# Core functions for solving svm and preprocessing
 def preprocessing(X, Y, percent=0.8):
     """
-    Preprocessing the data.
+    Preprocessing the data.(expect as input numpy arrays)
         - Shuffle
         - Divide data and labels
         - centering
         - add dimension to the data
         - cut into a training dataset and a test dataset
     """
-
     # Shuffle phase
     np.random.RandomState(1)
-    tmp = np.concatenate((X, np.matrix(Y)), axis=1)
-    np.random.shuffle(tmp)
-    X = tmp[:, :X.shape[1]]
+    rand_ix = np.arange(X.shape[0])
+    np.random.shuffle(rand_ix)
+    n_training = int(percent * Y.shape[0])
+    train_ix = rand_ix[:n_training]
+    test_ix = rand_ix[n_training:]
 
+    # only for numerical data (does not work with sequences)
     # centering data
     # X = X-np.mean(X, axis=0)
-
     # Scaling data
     # X = scale( X, axis=0, with_mean=True, with_std=True, copy=True )
 
-    # Add one dimension to your data points in order to account for
-    # the offset if your data is not centered.
-    X = np.concatenate((X, np.ones((X.shape[0], 1))), axis=1)
-
     # Compute the training and the test set
-    n_training = int(percent  * Y.size)
-    X_train = X[:n_training]
-    Y_train = Y[:n_training]
-    X_test = X[n_training:]
-    Y_test = Y[n_training:]
+    # Compute the training and the test set
+    X_train = X[train_ix]
+    Y_train = Y[train_ix] + 0.0
+    X_test = X[test_ix]
+    Y_test = Y[test_ix] + 0.0
 
     return X_train, Y_train, X_test, Y_test
 
 
-def SVM_vector(X_train, Y_train, tau, mu, dual=False, tol=0.01):
+def kernelize(X_train, X_test, kernel='linear', Kernels=None):
+    """Kernalization from a feature vector
     """
-    Compute the SVM vector corresponding to the normal of the hyperplan
-    which separates the data
+    if kernel == 'linear':
+        K = linear_kernel(X_train, X_train)
+        K_test = linear_kernel(X_test, X_train)
+    if kernel == 'gaussian':
+        K = gaussian_kernel(X_train, X_train, gamma)
+        K_test = gaussian_kernel(X_test, X_train, gamma)
+    if kernel == 'custom':
+        K = Kernels[0]
+        K_test = Kernels[1]
+    return K, K_test
+
+
+def fit(K, y, lamb=0.1, verbose=False):
+    """Solving the dual with cvxopt library
     """
-    w_0 = np.append(np.repeat(0., X_train.shape[1]), np.repeat(2., X_train.shape[0]))
-
-    if(dual):
-        w_0 = np.repeat(1., X_train.shape[0])/2./tau/float(X_train.shape[0])
-        Q, P, A, b = transform_svm_dual(tau,X_train,Y_train)
-    else:
-        w_0 = np.append(np.repeat(0., X_train.shape[1]), np.repeat(2., X_train.shape[0]))
-        Q, P, A, b = transform_svm_primal(tau,X_train,Y_train)
-
-
-
-    w, w_hist, phi_w_hist = barr_method(Q,P,A,b,w_0,mu,tol)
-
-    w = w[:X_train.shape[1]]
-
-    return w, w_hist, phi_w_hist
-
+    # map to [-1,1]
+    y = (y - 0.5) * 2
+    # We solve the Dual
+    NUM = K.shape[0]
+    P = matrix(2 * K * y.reshape((-1, 1)).dot(y.reshape((1, -1))))
+    q = matrix(-np.ones((NUM, 1)))
+    G = matrix(np.concatenate((-np.eye(NUM), np.eye(NUM)), axis=0))
+    h = matrix(np.concatenate((np.zeros(NUM), lamb * np.ones(NUM)), axis=0))
+    A = matrix(y.reshape(1, -1))
+    b = matrix(np.zeros(1))
+    solvers.options['show_progress'] = verbose
+    sol = solvers.qp(P, q, G, h, A, b)
+    alphas = np.array(sol['x']) * y[:, None]
+    bias = np.mean(y - np.dot(K, alphas))
+    return alphas, bias
 
 
-def predict(w, X_test, Y_test):
-    """
-    Given the normal vector w, it predicts the label of X_test
-    and compare them to Y_test.
-    """
-    w = np.array(w, dtype=np.float)
-    Y_predicted = []
-    Y_predicted = np.array(np.sign(X_test.dot(w)))[0]
-    accuracy = float(np.sum(Y_test-Y_predicted == 0))/float(Y_test.size)*100.
-    return Y_predicted, accuracy
+def predict(alphas, bias, K_test):
+    mat = np.dot(K_test, alphas)
+    mat = mat + bias > 0.
+    return mat.reshape(-1)
 
 
+# Testing functions
+
+def testing_lambda(X_train,
+                   Y_train,
+                   X_test,
+                   Y_test,
+                   lamb=0.1,
+                   kernel='linear',
+                   gamma=1000,
+                   Kernels=None):
+    K, K_test = kernelize(X_train, X_test, kernel='linear', Kernels=Kernels)
+    alphas, bias = fit(K, Y_train, lamb=lamb)
+
+    Y_pred = predict(alphas, bias, K_test)
+    acc_test = np.sum(Y_pred == Y_test) / Y_test.shape[0]
+
+    Y_pred_train = predict(alphas, bias, K)
+    acc_train = np.sum(Y_pred_train == Y_train) / X_train.shape[0]
+
+    if np.alltrue(Y_pred == 1):
+        print("test Toute les valeurs sont TRUE")
+
+    if np.alltrue(Y_pred == -1):
+        print("Toute les valeurs sont FALSE")
+
+    return acc_train, acc_test
 
 
+def test_kernel(X_train,
+                Y_train,
+                X_test,
+                Y_test,
+                kernel='linear',
+                gamma=1000,
+                kernel_feat=count_kuplet_k,
+                lamb=0.1,
+                **kwargs):
+    X_feat_train = []
+    X_feat_test = []
+    for xx in tqdm(X_train):
+        X_feat_train.append(kernel_feat(xx, kwargs))
+    for xx in tqdm(X_test):
+        X_feat_test.append(kernel_feat(xx, kwargs))
+
+    X_feat_train = np.array(X_feat_train)
+    X_feat_test = np.array(X_feat_test)
+
+    K, K_test = kernelize(X_feat_train, X_feat_test,
+                          kernel=kernel)
+    alphas, bias = fit(K, Y_train, lamb=lamb)
+
+    Y_pred = predict(alphas, bias, K_test)
+    acc_test = np.sum(Y_pred == Y_test) / Y_test.shape[0]
+    Y_pred_train = predict(alphas, bias, K)
+    acc_train = np.sum(Y_pred_train == Y_train) / X_train.shape[0]
+
+    if np.alltrue(Y_pred == 1):
+        print("test Toute les valeurs sont TRUE")
+    if np.alltrue(Y_pred == -1):
+        print("Toute les valeurs sont FALSE")
+
+    return acc_train, acc_test
 
 
+# Params is a dictionnary containing the parameters on which doing the grid_search and the desired values:
+# eg: grid = {'lamb':[0.1,0.01,0.005], 'k':[1,2,3]}
+def grid_search(X, Y, grid, kernel_feat=count_kuplet_k):
+    X_train, Y_train, X_test, Y_test = preprocessing(X, Y)
+    # baseline parameters
+    keys, values = zip(*grid.items())
+    experiments = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
+    best_param = dict(zip(grid.keys(), [None] * len(grid.keys())))
+    best_acc_test = 0
+    best_acc_train = 0
+
+    for e in experiments:
+        acc_test, acc_train = test_kernel(**param)
+        print('accuracy for train : {}'.format(acc_train))
+        print('accuracy for test : {}'.format(acc_test))
+        if acc_test > best_acc_test:
+            best_acc_test = acc_test
+            best_acc_train = acc_train
+            for p in grid.keys():
+                best_param[p] = e[p]
+    print('best parameters:', best_param,
+          'for a test accuracy of ', best_acc_test)
+    return best_acc_test, best_acc_train, best_param
