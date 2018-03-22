@@ -3,38 +3,7 @@ from tqdm import tqdm
 from itertools import product
 import sys
 from collections import defaultdict
-
-
-'''
-Compute the gram matrix of a reproducing kernel K(x, y) and data X even if the embedding phi is unknown
-input:  X as array
-        rk a python function computing K(x, y) (function from X^2 -> R)
-output: [K(x_i, y_j)] = <phi(x_i), phi(x_j)> for i,j in 1..n
-'''
-
-
-def gram_rk(X, rk):
-    n = X.shape[0]
-    K = np.zeros((n, n))
-    for i in tqdm(range(n)):
-        for j in range(n):
-            K[i, j] = rk(X[i], X[j])
-    return K
-
-
-'''
-Compute the gram matrix of a kernel given the embedding phi of this kernel
-input:  X as array
-        phi a python function computing phi(x) (from X to R^d where d is the dimension of the embedding)
-output: [K(x_i, y_j)] = <phi(x_i), phi(x_j)> for i,j in 1..n
-'''
-
-
-def gram_phi(X, phi):
-    X_feat = np.array([phi(x) for x in X])
-    K = X_feat.dot(X_feat.T)
-    return K
-
+from numpy import linalg as LA
 
 # k_spectrum kernel with k = 3
 # Creation of all possible combinations
@@ -43,22 +12,33 @@ dic_aa = [''.join(i) for i in product(base_azote, repeat=3)]
 nb_feat = len(dic_aa)
 
 
-def count_kuplet_3(seq):
-    k_grams_count = np.zeros(nb_feat)
-    for i, e in enumerate(dic_aa):
-        k_grams_count[i] = seq.count(e)
-    return k_grams_count
+def linear_kernel(x, z):
+    K = np.dot(x, z.T)
+    return K
 
 
-def count_kuplet_k(seq, k=3):
+def gaussian_kernel(x, z, gamma):
+    s1 = x.shape[0]
+    s2 = z.shape[0]
+    xx = np.repeat((LA.norm(x, axis=1)**2).reshape((-1, 1)), s2, axis=1)
+    zz = np.repeat((LA.norm(z, axis=1)**2).reshape((-1, 1)), s1, axis=1)
+    # K_tmp = np.exp(2 * linear_kernel(x, z) + xx + zz.T / (gamma**2))
+    K_tmp = np.exp((2 * linear_kernel(x, z) + xx + zz.T) / (gamma**2))
+    # K = np.array([np.exp(LA.norm(x - z1, axis=1)**2/(gamma**2)) for z1 in z])
+    return K_tmp
+
+
+def count_kuplet_k(X, k=3):
     base_azote = ['A', 'C', 'T', 'G']
     dic_k = [''.join(i) for i in product(base_azote, repeat=k)]
     nb_feat = len(dic_k)
-
+    XX = []
     k_grams_count = np.zeros(nb_feat)
-    for i, e in enumerate(dic_k):
-        k_grams_count[i] = seq.count(e)
-    return k_grams_count
+    for seq in tqdm(X):
+        for i, e in enumerate(dic_k):
+            k_grams_count[i] = seq.count(e)
+        XX.append(np.array(k_grams_count))
+    return np.array(XX)
 
 
 def compute_gap_kernel(X1, X2, k, lamb=0.5):
@@ -131,9 +111,6 @@ def LA_kernel(u, v, d=1., e=1., beta=0.00001):
     return np.log(1. + X2[N_u, N_v] + Y2[N_u, N_v] + M[N_u, N_v])
 
 
-
-
-
 # Mismatch and diMismatch Kernel from https://academic.oup.com/bioinformatics/article/33/19/3003/3852080
 def substitutionDistance(s1, s2):
     assert len(s1) == len(
@@ -173,6 +150,8 @@ def k_gramGen(k, alphabet='ATGC'):
 # print(len(k_gramGen(3)[0]))
 
 # compute the Mismatch distance between all possible kgram in a dynamic way
+
+
 def dynMismatchDist(k, alphabet='ATGC',
                     gramList=None, gramDict=None):
     if (gramList is None) | (gramDict is None):
@@ -242,6 +221,8 @@ def dynDiMismatchDist(k, alphabet='ATGC',
     return diMismatchDist
 
 # compute the dimismatch dictionnary with m maximum number of mismatch for all k-gram (m mismatch threshold)
+
+
 def buildDiMismatchTable(k, m, alphabet='ATGC',
                          gramList=None, gramDict=None,
                          diMismatchDist=None):
@@ -272,6 +253,8 @@ def buildDiMismatchTable(k, m, alphabet='ATGC',
     return diMismatchTable
 
 # compute the mismatch dictionnary with m maximum number of mismatch for all k-gram (m mismatch threshold)
+
+
 def buildMismatchTable(k, m, alphabet='ATGC',
                        gramList=None, gramDict=None,
                        mismatchDist=None):
@@ -314,15 +297,16 @@ def mismatchFeatures(X_train, k, m, alphabet='ATGC',
     if mismatchTable is None:
         print('Building Mismatch table for substrings...')
         mismatchTable = buildMismatchTable(k, m, alphabet=alphabet,
-                                            gramList=gramList, gramDict=gramDict,
-                                            mismatchDist=mismatchDist)
+                                           gramList=gramList, gramDict=gramDict,
+                                           mismatchDist=mismatchDist)
 
     Phi = np.zeros((len(X_train), len(gramList)))
     for s_ix in tqdm(np.arange(len(X_train))):
         for subStart in np.arange(len(X_train[0]) - k + 1):
             subSeq = X_train[s_ix][subStart:(subStart + k)]
             if subSeq not in gramList:
-                sys.stderr.write('Error, {} is not a valid {}-gram for the alphabet {}'.format(subSeq, k, alphabet))
+                sys.stderr.write(
+                    'Error, {} is not a valid {}-gram for the alphabet {}'.format(subSeq, k, alphabet))
                 sys.exit(1)
             subSeq_ix = gramDict[subSeq]
             Phi[s_ix, :] += mismatchTable[subSeq_ix, :]
@@ -335,10 +319,10 @@ def diMismatchFeatures(X_train, k, m, alphabet='ATGC',
                        gramList=None, gramDict=None,
                        diMismatchDist=None, diMismatchTable=None):
 
-    if (gramList == None) | (gramDict == None):
+    if (gramList is None) | (gramDict is None):
         gramList, gramDict = k_gramGen(k, alphabet=alphabet)
 
-    if diMismatchTable == None:
+    if diMismatchTable is None:
         print('Building Mismatch table for substrings...')
         diMismatchTable = buildDiMismatchTable(k, m, alphabet=alphabet, gramList=gramList, gramDict=gramDict,
                                                diMismatchDist=diMismatchDist)
@@ -348,15 +332,17 @@ def diMismatchFeatures(X_train, k, m, alphabet='ATGC',
         for subStart in np.arange(len(X_train[0]) - k + 1):
             subSeq = X_train[s_ix][subStart:(subStart + k)]
             if subSeq not in gramList:
-                sys.stderr.write('Error, {} is not a valid {}-gram for the alphabet {}'.format(subSeq, k, alphabet))
+                sys.stderr.write(
+                    'Error, {} is not a valid {}-gram for the alphabet {}'.format(subSeq, k, alphabet))
                 sys.exit(1)
             subSeq_ix = gramDict[subSeq]
             Phi[s_ix, :] += diMismatchTable[subSeq_ix, :]
     return Phi
 
 
-def count_kuplet_gap(seq, k_tmp, fold=5, k_grams_count=None):
-    assert fold%2 == 1 or fold ==2, "fold must be odd"
+def count_kuplet_gap(seq, k_tmp, k=3, fold=5, k_grams_count=None):
+    assert fold % 2 == 1 or fold == 2, "fold must be odd"
+
     fold_size = len(bin(fold)[2:])
     fold = bin(fold)[2:]
     base_azote = ['A', 'C', 'T', 'G']
@@ -364,17 +350,19 @@ def count_kuplet_gap(seq, k_tmp, fold=5, k_grams_count=None):
     if k_grams_count is None:
         k_grams_count = dict()
 
-    tab = [''.join(i) for i in product(base_azote, repeat=np.sum([int(i) for i in fold]))]
+    tab = [''.join(i) for i in product(
+        base_azote, repeat=np.sum([int(i) for i in fold]))]
     for code in tab:
         # print(''.join([code, '_', fold]))
         k_grams_count[''.join([code, '_', fold])] = 0.
         k_tmp[''.join([code, '_', fold])] = 0.
 
-    for i in range(len(seq) - fold_size+1):
-        l = seq[i:(i+fold_size)]
+    for i in range(len(seq) - fold_size + 1):
+        l = seq[i:(i + fold_size)]
         # print(l)
-        l = ''.join(l[i]*int(fold[i]) for i in range(len(fold)))
-        k_grams_count[''.join([l, '_', fold])] += 1./(len(seq) - fold_size+1)
+        l = ''.join(l[i] * int(fold[i]) for i in range(len(fold)))
+        k_grams_count[''.join([l, '_', fold])] += 1. / \
+            (len(seq) - fold_size + 1)
         k_tmp[''.join([l, '_', fold])] += 1.
     return k_grams_count, k_tmp
 
@@ -382,8 +370,9 @@ def count_k_fold(sent, k_tmp, fold1 = 9, fold2 = 64):
     k_grams_count = dict()
     k_tmp = dict()
     for fold in np.arange(fold1, fold2, 2):
-        if(np.sum([int(i) for i in bin(fold)[2:]]) > 2):
+        if(np.sum([int(i) for i in bin(fold)[2:]]) > 3):
             k_grams_count, k_tmp = count_kuplet_gap(sent, k_tmp, fold = fold, k_grams_count=k_grams_count)
+
     return np.array([k_grams_count[key] for key in sorted(k_grams_count)]), np.array([k_tmp[key] for key in sorted(k_tmp)])
 
 
@@ -403,6 +392,7 @@ def to_k_fold(X, fold1=9, fold2=64):
     X_process = np.array(X_process) * len(X) * len(X[0])
     sum_tmp = np.sum(np.array(X_count), axis=0)
 
-    X_process = np.divide(X_process, sum_tmp, out=np.zeros_like(X_process), where=sum_tmp!=0)
+    X_process = np.divide(X_process, sum_tmp, out=np.zeros_like(
+        X_process), where=sum_tmp != 0)
 
     return X_process
